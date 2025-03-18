@@ -14,6 +14,7 @@ import ru.quipy.payments.api.PaymentAggregate
 import java.net.SocketTimeoutException
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 // Advice: always treat time as a Duration
 class PaymentExternalSystemAdapterImpl(
@@ -37,7 +38,9 @@ class PaymentExternalSystemAdapterImpl(
     private val slidingWindowRateLimiter = SlidingWindowRateLimiter(rateLimitPerSec.toLong()-1, Duration.ofSeconds(1))
     private val ongoingWindow = OngoingWindow(parallelRequests)
 
-    private val client = OkHttpClient.Builder().build()
+    private val client = OkHttpClient.Builder()
+        .callTimeout(1300, TimeUnit.MILLISECONDS)
+        .build()
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
         logger.warn("[$accountName] Submitting payment request for payment $paymentId")
@@ -83,7 +86,6 @@ class PaymentExternalSystemAdapterImpl(
                             }
                             return
                         } else if (response.code in retryableHttpCodes) {
-                            waitTimeMillis = (waitTimeMillis + 1).coerceAtMost(3000L)
                             val retryAfterHeader = response.headers["Retry-After"]
                             if (!retryAfterHeader.isNullOrEmpty()) {
                                 waitTimeMillis = retryAfterHeader.toLong() * 1000
