@@ -27,6 +27,7 @@ class PaymentExternalSystemAdapterImpl(
         val emptyBody = ByteArray(0).toRequestBody(null)
         val mapper = ObjectMapper().registerKotlinModule()
         val retryableHttpCodes = setOf(429, 500, 502, 503, 504)
+        const val CALL_TIMEOUT_COEFFICIENT = 1.2
     }
 
     private val serviceName = properties.serviceName
@@ -34,16 +35,17 @@ class PaymentExternalSystemAdapterImpl(
     private val parallelRequests = properties.parallelRequests
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val requestAverageProcessingTime = properties.averageProcessingTime
+    private val callTimeoutValue = (CALL_TIMEOUT_COEFFICIENT * requestAverageProcessingTime.toMillis()).toLong()
 
     private val slidingWindowRateLimiter = SlidingWindowRateLimiter(rateLimitPerSec.toLong()-1, Duration.ofSeconds(1))
     private val ongoingWindow = OngoingWindow(parallelRequests)
 
     private val client = OkHttpClient.Builder()
-        .callTimeout(1300, TimeUnit.MILLISECONDS)
+        .callTimeout(callTimeoutValue, TimeUnit.MILLISECONDS)
         .build()
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
-        logger.warn("[$accountName] Submitting payment request for payment $paymentId")
+        logger.warn("[$accountName] Submitting payment request for payment $paymentId, timeout: $callTimeoutValue")
 
         val transactionId = UUID.randomUUID()
         logger.info("[$accountName] Submit for $paymentId, txId: $transactionId")
